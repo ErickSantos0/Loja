@@ -10,3 +10,4 @@ outputs/
 work/
 *.tsbuildinfo
 .env*
+skills-lock.json

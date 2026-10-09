@@ -8,6 +8,8 @@ Na versão web, entre com o usuário e a senha configurados pelo responsável pe
 
 O aplicativo Windows e a versão web mantêm bancos separados. A importação da exportação JSON da web para o aplicativo é uma transferência única; não há sincronização automática entre eles.
 
+Baixe o [instalador Windows](https://github.com/ErickSantos0/Loja/releases/download/v1.0.0/Fio-Caixa-1.0.0-Instalador.exe) ou a [versão portátil](https://github.com/ErickSantos0/Loja/releases/download/v1.0.0/Fio-Caixa-1.0.0-Portatil.exe). As instruções e os hashes SHA256 estão na [release v1.0.0](https://github.com/ErickSantos0/Loja/releases/tag/v1.0.0).
+
 1. Abra **Configurações** e preencha o nome e contato da loja.
 2. Em **Estoque**, cadastre uma peça para cada combinação de tamanho e cor, com código de barras exclusivo, custo, preço e quantidade inicial. Zeros à esquerda do código são preservados.
 3. **Abra o caixa** e informe o fundo inicial em dinheiro.
