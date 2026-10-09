@@ -36,6 +36,7 @@ import {
   CreditCard,
   ArrowDownLeft,
   ArrowUpRight,
+  LogOut,
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -294,10 +295,19 @@ function csv(rows: (string | number)[][]) {
 export default function PosApp({
   operator,
   userKey,
+  desktop = false,
+  transport,
 }: {
   operator: string;
   userKey: string;
+  desktop?: boolean;
+  transport?: (path: string, options?: RequestInit) => Promise<Response>;
 }) {
+  const request = useCallback(
+    (path: string, options?: RequestInit) =>
+      transport ? transport(path, options) : fetch(path, options),
+    [transport],
+  );
   const pendingKey = `fio-pending-v1-${userKey}`;
   const [state, setState] = useState<PublicState | null>(null);
   const s = state || emptyState();
@@ -313,27 +323,44 @@ export default function PosApp({
     requestId: string;
   } | null>(null);
   const locked = useRef(false);
+  const [pendingReady, setPendingReady] = useState(false);
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(pendingKey);
-      if (raw) {
-        const pending = JSON.parse(raw);
-        if (
-          typeof pending.action === "string" &&
-          pending.input &&
-          typeof pending.requestId === "string"
-        )
-          setUncertain(pending);
+    let active = true;
+    setPendingReady(false);
+    async function recover() {
+      try {
+        const raw = desktop
+          ? await window.fioDesktop.pending.get()
+          : sessionStorage.getItem(pendingKey);
+        if (raw) {
+          const pending = JSON.parse(raw);
+          if (
+            typeof pending.action === "string" &&
+            pending.input &&
+            typeof pending.requestId === "string"
+          )
+            if (active) setUncertain(pending);
+        }
+        if (active) setPendingReady(true);
+      } catch {
+        toast.error("Não foi possível recuperar a confirmação pendente.");
       }
-    } catch {
-      toast.error("Não foi possível recuperar a confirmação pendente.");
     }
-  }, [pendingKey]);
-  function clearPending() {
-    setUncertain(null);
+    void recover();
+    return () => {
+      active = false;
+    };
+  }, [pendingKey, desktop]);
+  async function clearPending() {
     try {
-      sessionStorage.removeItem(pendingKey);
-    } catch {}
+      if (desktop) await window.fioDesktop.pending.clear();
+      else sessionStorage.removeItem(pendingKey);
+      setUncertain(null);
+    } catch {
+      toast.error(
+        "A operação foi confirmada, mas a confirmação pendente não pôde ser removida. Tente conferi-la novamente.",
+      );
+    }
   }
   const [cart, setCart] = useState<CartLine[]>([]);
   const [barcode, setBarcode] = useState("");
@@ -354,21 +381,26 @@ export default function PosApp({
   const [refundMethod, setRefundMethod] = useState<Method>("cash");
   const session = s.sessions.find((x) => !x.closedAt);
   const store = s.settings[0];
-  const load = useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
-    try {
-      const response = await fetch("/api/pos", { cache: "no-store" });
-      const data: any = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setState(data);
-      setError("");
-    } catch (e) {
-      if (!quiet)
-        setError(e instanceof Error ? e.message : "Não foi possível carregar.");
-    } finally {
-      if (!quiet) setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setLoading(true);
+      try {
+        const response = await request("/api/pos", { cache: "no-store" });
+        const data: any = await response.json();
+        if (!response.ok) throw new Error(data.error);
+        setState(data);
+        setError("");
+      } catch (e) {
+        if (!quiet)
+          setError(
+            e instanceof Error ? e.message : "Não foi possível carregar.",
+          );
+      } finally {
+        if (!quiet) setLoading(false);
+      }
+    },
+    [request],
+  );
   useEffect(() => {
     void load();
   }, [load]);
@@ -392,6 +424,12 @@ export default function PosApp({
     existingId?: string,
   ): Promise<any> {
     if (locked.current) return null;
+    if (!pendingReady) {
+      toast.error(
+        "Aguarde a recuperação das confirmações. Se não concluir, feche e abra o aplicativo.",
+      );
+      return null;
+    }
     if (uncertain && !existingId) {
       toast.error("Confira a operação pendente antes de continuar.");
       return null;
@@ -400,20 +438,21 @@ export default function PosApp({
     setSaving(true);
     const requestId = existingId || crypto.randomUUID();
     try {
-      sessionStorage.setItem(
-        pendingKey,
-        JSON.stringify({ action, input, requestId }),
-      );
+      const raw = JSON.stringify({ action, input, requestId });
+      if (desktop) await window.fioDesktop.pending.set(raw);
+      else sessionStorage.setItem(pendingKey, raw);
     } catch {
       locked.current = false;
       setSaving(false);
       toast.error(
-        "Permita o armazenamento neste navegador para guardar a confirmação da operação. Nenhuma operação foi enviada.",
+        desktop
+          ? "Não foi possível guardar a confirmação no computador. Nenhuma operação foi enviada. Verifique o espaço em disco."
+          : "Permita o armazenamento neste navegador para guardar a confirmação da operação. Nenhuma operação foi enviada.",
       );
       return null;
     }
     try {
-      const response = await fetch("/api/pos", {
+      const response = await request("/api/pos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, input, requestId }),
@@ -427,11 +466,11 @@ export default function PosApp({
       if (!response.ok) {
         if (response.status >= 500) {
           setUncertain({ action, input, requestId });
-        } else clearPending();
+        } else await clearPending();
         toast.error(data.error || "Não foi possível salvar.");
         return null;
       }
-      clearPending();
+      await clearPending();
       setState(data.state);
       toast.success(
         action === "sale.return"
@@ -442,7 +481,9 @@ export default function PosApp({
     } catch {
       setUncertain({ action, input, requestId });
       toast.error(
-        "A conexão foi interrompida. Confira a operação pendente para evitar duplicação.",
+        desktop
+          ? "Não foi possível confirmar a operação. Confira a operação pendente para evitar duplicação."
+          : "A conexão foi interrompida. Confira a operação pendente para evitar duplicação.",
       );
       return null;
     } finally {
@@ -603,7 +644,7 @@ export default function PosApp({
         execute: async (input: any) => {
           if (typeof input?.query !== "string")
             throw new Error("Informe uma consulta.");
-          const response = await fetch("/api/pos", { cache: "no-store" });
+          const response = await request("/api/pos", { cache: "no-store" });
           if (!response.ok) throw new Error("Estoque indisponível.");
           const data: any = await response.json();
           setState(data);
@@ -812,6 +853,16 @@ export default function PosApp({
               <small>Operador</small>
             </div>
           </div>
+          {!desktop && (
+            <button className="nav-item footer-nav" disabled={saving || !!uncertain} onClick={async () => {
+              try {
+                const response = await fetch("/api/auth/logout", { method: "POST" });
+                if (response.ok) window.location.assign("/login");
+              } catch { setError("Não foi possível sair. Tente novamente."); }
+            }}>
+              <LogOut size={18} /> Sair
+            </button>
+          )}
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="workspace">
@@ -2251,10 +2302,12 @@ export default function PosApp({
                           ou pressione F2 antes de ler.
                         </p>
                         <p className="report-note">
-                          Os dados ficam no banco de dados da aplicação e exigem
-                          internet. Cada tamanho e cor deve ter um código único.
-                          Cartão e Pix são registros manuais. Comprovantes são
-                          não fiscais.
+                          {desktop
+                            ? "Os dados ficam neste computador e o caixa funciona sem internet. Use Arquivos e backup para salvar uma cópia fora do computador. "
+                            : "Os dados ficam no banco de dados da aplicação e exigem internet. "}
+                          Cada tamanho e cor deve ter um código único. Cartão e
+                          Pix são registros manuais. Comprovantes são não
+                          fiscais.
                         </p>
                       </div>
                     </section>
@@ -2892,7 +2945,16 @@ export default function PosApp({
                 <p className="receipt-foot">{store.footer}</p>
               </div>
               <div className="actions receipt-actions">
-                <button className="btn primary" onClick={() => window.print()}>
+                <button
+                  className="btn primary"
+                  onClick={() => {
+                    if (desktop)
+                      void window.fioDesktop
+                        .printReceipt()
+                        .catch((e: Error) => toast.error(e.message));
+                    else window.print();
+                  }}
+                >
                   <Printer size={17} /> Imprimir comprovante
                 </button>
                 {receipt.status !== "returned" && (
@@ -3046,11 +3108,15 @@ export default function PosApp({
                 como texto. Depois, pressione F2 no sistema e leia uma etiqueta
                 cadastrada.
               </p>
-              <h3>Internet e comprovantes</h3>
+              <h3>
+                {desktop ? "Dados e comprovantes" : "Internet e comprovantes"}
+              </h3>
               <p>
-                Esta versão usa dados compartilhados pela internet. Os
-                pagamentos são registros manuais; o comprovante impresso é não
-                fiscal.
+                {desktop
+                  ? "Esta versão salva os dados no computador e funciona sem internet. Faça backups frequentes em outro dispositivo. "
+                  : "Esta versão usa dados compartilhados pela internet. "}
+                Os pagamentos são registros manuais; o comprovante impresso é
+                não fiscal.
               </p>
             </div>
           )}

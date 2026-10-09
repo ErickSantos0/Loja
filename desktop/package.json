@@ -1,0 +1,64 @@
+{
+  "name": "fio-caixa",
+  "productName": "Fio Caixa",
+  "version": "1.0.0",
+  "description": "Caixa e estoque local para lojas de roupas",
+  "author": "Fio Caixa",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "electron .",
+    "check": "node ../node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "package": "node build.mjs && electron-builder --win nsis portable --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2"
+  },
+  "build": {
+    "appId": "br.fio.caixa",
+    "productName": "Fio Caixa",
+    "executableName": "FioCaixa",
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "artifactName": "Fio-Caixa-${version}-Instalador.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Fio Caixa",
+      "runAfterFinish": false,
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "pt_BR"
+      ]
+    },
+    "portable": {
+      "artifactName": "Fio-Caixa-${version}-Portatil.${ext}"
+    }
+  }
+}

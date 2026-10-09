@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "plugins": [],
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "paths": { "@/*": ["../*"] }
+  },
+  "include": [
+    "main/**/*.ts",
+    "renderer/**/*.ts",
+    "renderer/**/*.tsx",
+    "tests/**/*.ts",
+    "../app/desktop-bridge.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", "release"]
+}

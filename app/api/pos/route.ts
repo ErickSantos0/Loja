@@ -1,8 +1,10 @@
-import { getChatGPTUser } from "@/app/chatgpt-auth";
-import { loadState, mutateState } from "@/db/store";
+import { getUser } from "@/lib/server-auth";
+import { loadState, mutateState, ValidationError } from "@/db/postgres-store";
+import { isSameOrigin } from "@/lib/request-origin";
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET() {
-  if (!(await getChatGPTUser()))
+  if (!(await getUser()))
     return Response.json(
       { error: "Entre na sua conta para acessar a loja." },
       { status: 401 },
@@ -12,7 +14,7 @@ export async function GET() {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (e) {
-    console.error("POS load failed", e);
+    console.error("POS load failed");
     return Response.json(
       { error: "Não foi possível carregar os dados. Tente novamente." },
       { status: 503 },
@@ -20,28 +22,28 @@ export async function GET() {
   }
 }
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
+  const user = await getUser();
   if (!user)
     return Response.json(
       { error: "Entre na sua conta para acessar a loja." },
       { status: 401 },
     );
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin)
+  if (!isSameOrigin(request))
     return Response.json({ error: "Origem inválida." }, { status: 403 });
   try {
     const raw = await request.text();
-    if (raw.length > 100000)
+    if (Buffer.byteLength(raw, "utf8") > 100000)
       return Response.json({ error: "Envio muito grande." }, { status: 413 });
     const body = JSON.parse(raw);
     if (
+      !body || typeof body !== "object" || Array.isArray(body) ||
       typeof body.action !== "string" ||
       !body.input ||
-      typeof body.input !== "object" ||
+      typeof body.input !== "object" || Array.isArray(body.input) ||
       typeof body.requestId !== "string" ||
       !/^[a-zA-Z0-9-]{20,80}$/.test(body.requestId)
     )
-      throw new Error("Dados de operação inválidos.");
+      throw new ValidationError("Dados de operação inválidos.");
     return Response.json(
       await mutateState(
         body.action,
@@ -52,9 +54,8 @@ export async function POST(request: Request) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Não foi possível salvar.";
-    if (/D1|SQLITE|database|binding/i.test(message)) {
-      console.error("POS save failed", e);
+    if (!(e instanceof ValidationError) && !(e instanceof SyntaxError)) {
+      console.error("POS save failed");
       return Response.json(
         {
           error:
@@ -63,6 +64,6 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
-    return Response.json({ error: message }, { status: 400 });
+    return Response.json({ error: e instanceof ValidationError ? e.message : "Dados de operação inválidos." }, { status: 400 });
   }
 }

@@ -1,0 +1,12 @@
+desktop/
+.sites-runtime/
+.qa/
+.openai/
+.wrangler/
+.agents/
+.codex/
+dist/
+outputs/
+work/
+*.tsbuildinfo
+.env*

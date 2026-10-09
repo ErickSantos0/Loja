@@ -599,7 +599,7 @@ export function applyOperation(
       });
       insist(
         payments.filter((p) => p.method === "store").length <= 1,
-        "Use uma ?nica linha de pagamento para o credi?rio.",
+        "Use uma única linha de pagamento para o crediário.",
       );
       const received = payments.reduce((n, p) => n + p.amount, 0);
       const change = received - amounts.total;

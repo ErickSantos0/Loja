@@ -1,8 +1,12 @@
 ﻿# Fio — caixa e estoque para loja de roupas
 
-Aplicação em React e TypeScript, com backend autenticado e banco de dados Cloudflare D1 (SQLite). A versão publicada é privada e usa a conta ChatGPT do proprietário para entrar. Os dados ficam no servidor, compartilhados entre os dispositivos que acessarem a mesma loja; esta versão exige internet.
+Aplicação em React, TypeScript e Next.js 16, com login próprio e banco PostgreSQL persistente. Na versão web, os dispositivos conectados ao mesmo banco compartilham vendas e estoque; o acesso exige conexão com o servidor. O projeto também inclui um aplicativo independente para Windows, com banco SQLite local e funcionamento sem internet.
 
 ## Usar na loja
+
+Na versão web, entre com o usuário e a senha configurados pelo responsável pela loja. No Windows, abra **Fio Caixa** e informe o nome do operador. O instalador e a versão portátil são gerados em `desktop/release`. Consulte [as instruções do aplicativo](desktop/README.md) para instalar, fazer backup ou importar os dados da versão web.
+
+O aplicativo Windows e a versão web mantêm bancos separados. A importação da exportação JSON da web para o aplicativo é uma transferência única; não há sincronização automática entre eles.
 
 1. Abra **Configurações** e preencha o nome e contato da loja.
 2. Em **Estoque**, cadastre uma peça para cada combinação de tamanho e cor, com código de barras exclusivo, custo, preço e quantidade inicial. Zeros à esquerda do código são preservados.
@@ -41,45 +45,92 @@ O comprovante é **não fiscal**. Emissão de NFC-e/NF-e e integrações de paga
 Requer Node.js 24 recomendado (mínimo declarado no projeto: 22.13), npm e navegador atual.
 
 ```powershell
-cd "C:\Users\nasci\Downloads\Compras e vendas\caixa-loja"
 npm ci
-npm run build
+Copy-Item .env.example .env.local
 ```
 
-Na primeira configuração de uma base local vazia, aplique a migração:
+Edite `.env.local` antes de iniciar o servidor:
+
+| Variável | Configuração |
+| --- | --- |
+| `DATABASE_URL` | Conexão de um banco PostgreSQL local ou externo. Na Vercel, prefira a conexão com pooler fornecida pelo Neon ou pelo seu provedor. |
+| `LOJA_ADMIN_USER` | Nome do usuário de acesso à loja. |
+| `LOJA_ADMIN_PASSWORD` | Senha exclusiva com no mínimo 12 caracteres. |
+| `LOJA_SESSION_SECRET` | Segredo aleatório de pelo menos 32 caracteres, usado para assinar as sessões. |
+| `LOJA_OPERATOR_NAME` | Nome do operador que aparece nos registros; se omitido, será usado `Operador`. |
+
+O arquivo de exemplo não contém uma senha ou um segredo de sessão válidos. Gere um segredo e copie o resultado para `LOJA_SESSION_SECRET`:
 
 ```powershell
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_fantastic_slipstream.sql
+node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
+```
+
+Não publique `.env.local` nem suas credenciais no GitHub. A autenticação recusa configurações sem senha e segredo válidos; não existe uma senha padrão de produção. As sessões duram 12 horas e são invalidadas quando o usuário, a senha ou o segredo são alterados.
+
+```powershell
 npm run dev
 ```
 
-Não reaplique a migração sobre uma base já inicializada. Abra o endereço exibido pelo servidor e visite `/signin-with-chatgpt?return_to=/` para entrar como operador local **Seedy**. O login simulado funciona somente no desenvolvimento local e não é incluído na publicação. O banco local em `.wrangler/state` é separado do banco publicado. Os dados usados nos testes não são enviados à loja publicada.
+Abra [http://127.0.0.1:5173](http://127.0.0.1:5173) e faça login. O banco PostgreSQL deve existir e permitir a criação das tabelas. O servidor cria automaticamente `fio_records`, `fio_revision` e a configuração inicial da loja na primeira utilização; o estoque começa vazio. Não é necessário executar Wrangler ou entrar com uma conta ChatGPT.
+
+Para verificar e executar a compilação de produção:
 
 ```powershell
 npm run check
 npm test
+npm run build
+npm start
 ```
 
-Para alterar o esquema físico do banco, edite `db/schema.ts` e gere novas migrações com `npm run db:generate`. Preserve migrações já aplicadas.
+`npm start` também usa a porta 5173 e exige uma compilação concluída. Use um banco separado para desenvolvimento e testes, sem apontar operações de teste para a loja em produção.
+
+## Publicar na Vercel
+
+O repositório do projeto é [ErickSantos0/Loja](https://github.com/ErickSantos0/Loja). Importe esse repositório na Vercel com o preset **Next.js** e a raiz do repositório como diretório do projeto. `vercel.json` define `npm ci` como instalação e `npm run build` como compilação.
+
+1. Crie ou conecte um banco PostgreSQL persistente, por exemplo Neon, e obtenha sua URL de conexão com pooler.
+2. Configure as cinco variáveis da tabela acima em **Settings → Environment Variables**. Esses valores são usados somente no servidor; não use o prefixo `NEXT_PUBLIC_`.
+3. Publique o projeto e abra o endereço fornecido pela Vercel. Entre com o usuário e a senha definidos para a loja.
+4. Ao alterar as variáveis de ambiente, faça uma nova publicação para que o servidor use os novos valores.
+
+O PostgreSQL é obrigatório para armazenar os dados da versão web. O aplicativo não grava vendas em arquivos locais das funções da Vercel. Configure um banco próprio para publicações de preview quando for testar alterações e mantenha backups do banco de produção no provedor, além da exportação JSON disponível no sistema.
+
+## Compilar o aplicativo Windows
+
+```powershell
+npm ci
+npm --prefix desktop ci
+npm --prefix desktop run check
+npm --prefix desktop test
+npm --prefix desktop run package
+```
+
+Os executáveis de instalação e portátil ficam em `desktop/release`. Depois de instalado, o aplicativo da loja não exige Node.js, PostgreSQL ou conexão com a Vercel. [O guia do Windows](desktop/README.md) explica a localização do banco local, backup e restauração.
 
 ## Arquitetura
 
 - `app/pos-app.tsx` e `app/pos.css`: interface React responsiva, formulários, leitor, pagamentos e impressão.
 - `lib/pos.ts`: regras de negócio e cálculos, compartilhados com testes.
+- `app/login/`, `app/api/auth/` e `lib/auth-session.ts`: login com usuário/senha e sessão assinada em cookie HttpOnly.
 - `app/api/pos/route.ts`: API autenticada; operador vem da identidade do servidor.
-- `db/store.ts`: registros individuais no banco, com revisão global e transação D1. Uma revisão concorrente faz o lote falhar por CHECK e a operação é relida/revalidada, sem gravar estoque ou pagamento parcialmente.
-- `db/schema.ts` e `drizzle/`: esquema e migração.
-- `tests/pos.test.mjs`: testes de regras de negócio.
+- `db/postgres-store.ts`: armazenamento PostgreSQL da versão web. Cada mutação bloqueia a revisão global dentro de uma transação antes de validar estoque e idempotência; uma falha desfaz a operação inteira.
+- `db/postgres.sql`: referência do esquema PostgreSQL inicializado automaticamente pelo servidor.
+- `tests/`: testes de regras de negócio, armazenamento PostgreSQL e autenticação. Os testes PostgreSQL usam PGlite em uma base isolada.
+- `desktop/`: aplicativo Electron, transporte IPC e armazenamento SQLite local, reutilizando a interface e as regras de negócio.
 
-A implementação carrega o histórico da loja para montar as telas. Para operações com histórico muito extenso, o próximo passo de escala é paginação/consultas por período no servidor. A exportação JSON fornece uma cópia dos dados; não há restauração automática pela interface.
+A implementação carrega o histórico da loja para montar as telas. Para operações com histórico muito extenso, o próximo passo de escala é paginação/consultas por período no servidor. A exportação JSON fornece uma cópia dos dados; a interface web não oferece restauração. O aplicativo Windows permite importar essa exportação, conforme seu guia.
 
-Referências técnicas: [React](https://react.dev/reference/react/useEffect) e [transações D1](https://developers.cloudflare.com/d1/worker-api/d1-database/).
+Os arquivos `db/store.ts`, `db/schema.ts`, `drizzle/`, a configuração Cloudflare e os scripts `sites:dev`, `sites:build` e `sites:start` pertencem à hospedagem anterior em ChatGPT Sites. São mantidos como legado e não fazem parte da execução web atual com Next.js/PostgreSQL. `db:generate` também atende a esse esquema legado, não ao PostgreSQL atual.
 
-## Verificação realizada
+Referências técnicas: [React](https://react.dev/), [Next.js](https://nextjs.org/docs), [PostgreSQL](https://www.postgresql.org/docs/current/) e [transações postgres.js](https://github.com/porsager/postgres#transactions).
 
-- 11 testes automatizados de cálculos, pagamento misto, parcelas, devoluções, crediário, estoque, idempotência, validação de datas e sessões de caixa.
-- Fluxos reais no navegador: cadastro, leitor por código e Enter, desconto de 10%, dinheiro/troco, comprovante, recarregamento, estoque, devolução parcial, cliente, crediário misto, recebimento parcial e devolução integral.
-- API com banco D1 local: concorrência na última unidade, envio concorrente com mesmo identificador, operação inválida sem gravação parcial, sessão antiga rejeitada e acesso sem login rejeitado.
-- Falha de resposta após gravação, recuperação sem duplicar venda, layout móvel e impressão PDF.
+## Testes e validação
 
-As verificações locais usam uma base própria, sem transações na loja publicada.
+- A suíte de domínio cobre cálculos, pagamento misto, parcelas, devoluções, crediário, estoque, idempotência, datas e sessões de caixa.
+- A suíte PostgreSQL verifica persistência, transações, rollback e recuperação de operações usando uma base PGlite isolada.
+- Os testes de autenticação verificam credenciais, assinatura, validade e invalidação de sessões.
+- Os testes do aplicativo Windows verificam SQLite, importação e fluxos do executável com internet desativada e dados separados da loja.
+
+A interface já foi validada com cadastro, leitor por código e Enter, desconto, dinheiro/troco, comprovante, recarregamento, estoque, devolução parcial, crediário e recebimentos. Também foram verificados recuperação após falha de resposta, layout móvel e impressão PDF de 80 mm.
+
+As verificações locais usam bases próprias, sem transações na loja em produção. Os testes do leitor simulam digitação e Enter; confira o equipamento físico antes de começar a operação na loja.

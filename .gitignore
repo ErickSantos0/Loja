@@ -30,11 +30,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
 
 # typescript
+*.tsbuildinfo
 next-env.d.ts
 /dist/
 /.wrangler/
@@ -44,3 +46,8 @@ next-env.d.ts
 /.codex/
 /outputs/
 /work/
+/desktop/node_modules/
+/desktop/dist/
+/desktop/release/
+/desktop/.qa/
+/.qa/

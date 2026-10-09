@@ -1,0 +1,22 @@
+FIO CAIXA - WINDOWS
+
+Para instalar: abra Fio-Caixa-1.0.0-Instalador.exe.
+Depois use o atalho Fio Caixa na Área de Trabalho.
+
+Para abrir sem instalar: use Fio-Caixa-1.0.0-Portatil.exe.
+
+O programa funciona sem internet. Cadastre suas roupas em Estoque,
+configure a loja em Configurações e abra o caixa para vender.
+
+Leitor USB: configure como teclado, com Enter no final.
+F2 = campo do leitor. F9 = pagamento.
+
+Faça backup regularmente em Arquivos e backup > Salvar backup completo.
+Guarde uma cópia em um pendrive ou em outro computador.
+Os dados ficam em %APPDATA%\Fio Caixa\data.
+Mover o executável não transfere os dados: use backup/restauração.
+
+Cartão/Pix são registros manuais. O comprovante é não fiscal.
+O executável não tem assinatura digital; o editor aparece como desconhecido.
+
+Instruções completas e informações sobre importação estão em desktop/README.md.
