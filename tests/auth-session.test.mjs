@@ -100,6 +100,69 @@ test('valid environment preserves the password and normalizes administrator user
   assert.equal(readAuthConfig({ ...environment, LOJA_OPERATOR_NAME: '' })?.operator, 'Operador');
 });
 
+test('an explicit server minimum permits a five-character password and normal login', () => {
+  const shortConfig = { ...config, username: 'qa-user', password: 'abcde' };
+  const configured = readAuthConfig({
+    ...environment,
+    LOJA_ADMIN_USER: shortConfig.username,
+    LOJA_ADMIN_PASSWORD: shortConfig.password,
+    LOJA_ADMIN_MIN_PASSWORD_LENGTH: '5',
+  });
+  assert.deepEqual(configured, shortConfig);
+  assert.equal(credentialsMatch(shortConfig.username, shortConfig.password, configured), true);
+  assert.equal(credentialsMatch(shortConfig.username, 'abcdf', configured), false);
+  assert.equal(verifySession(createSession(configured, now), configured, now)?.userId, 'store:qa-user');
+});
+
+test('the default password minimum remains twelve characters', () => {
+  for (const length of [5, 8, 11]) {
+    assert.equal(readAuthConfig({ ...environment, LOJA_ADMIN_PASSWORD: 'x'.repeat(length) }), null);
+  }
+  assert.equal(readAuthConfig({ ...environment, LOJA_ADMIN_PASSWORD: 'x'.repeat(12) })?.password, 'x'.repeat(12));
+});
+
+test('invalid server minimum configuration fails closed even for a long password', () => {
+  for (const minimum of ['NaN', '4', '257', '1.5']) {
+    assert.equal(readAuthConfig({ ...environment, LOJA_ADMIN_MIN_PASSWORD_LENGTH: minimum }), null);
+  }
+});
+
+test('empty passwords and passwords below the configured minimum are rejected', () => {
+  for (const password of ['', 'abcd']) {
+    assert.equal(readAuthConfig({
+      ...environment,
+      LOJA_ADMIN_PASSWORD: password,
+      LOJA_ADMIN_MIN_PASSWORD_LENGTH: '5',
+    }), null);
+  }
+  assert.equal(readAuthConfig({
+    ...environment,
+    LOJA_ADMIN_PASSWORD: 'abcde',
+    LOJA_ADMIN_MIN_PASSWORD_LENGTH: '6',
+  }), null);
+});
+
+test('the maximum allowed minimum accepts exactly 256 password characters', () => {
+  const longest = 'x'.repeat(256);
+  assert.equal(readAuthConfig({
+    ...environment,
+    LOJA_ADMIN_PASSWORD: longest,
+    LOJA_ADMIN_MIN_PASSWORD_LENGTH: '256',
+  })?.password, longest);
+  assert.equal(readAuthConfig({
+    ...environment,
+    LOJA_ADMIN_PASSWORD: `${longest}x`,
+    LOJA_ADMIN_MIN_PASSWORD_LENGTH: '256',
+  }), null);
+});
+
+test('changing a short-password account still revokes its existing sessions', () => {
+  const shortConfig = { ...config, username: 'qa-user', password: 'abcde' };
+  const token = createSession(shortConfig, now);
+  assert.equal(verifySession(token, { ...shortConfig, username: 'qa-other' }, now), null);
+  assert.equal(verifySession(token, { ...shortConfig, password: 'fghij' }, now), null);
+});
+
 test('missing or invalid authentication configuration is rejected', () => {
   const invalid = [
     {},

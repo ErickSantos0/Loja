@@ -9,7 +9,11 @@ export function readAuthConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig
   const username = env.LOJA_ADMIN_USER?.trim();
   const password = env.LOJA_ADMIN_PASSWORD;
   const secret = env.LOJA_SESSION_SECRET;
-  if (!username || username.length > 100 || !password || password.length < 12 || password.length > 256 || !secret || secret.length < 32) return null;
+  const minimumLength = env.LOJA_ADMIN_MIN_PASSWORD_LENGTH === undefined
+    ? 12
+    : Number(env.LOJA_ADMIN_MIN_PASSWORD_LENGTH);
+  if (!Number.isInteger(minimumLength) || minimumLength < 5 || minimumLength > 256) return null;
+  if (!username || username.length > 100 || !password || password.length < minimumLength || password.length > 256 || !secret || secret.length < 32) return null;
   return { username, password, secret, operator: env.LOJA_OPERATOR_NAME?.trim().slice(0, 100) || "Operador" };
 }
 

@@ -57,7 +57,8 @@ Edite `.env.local` antes de iniciar o servidor:
 | --- | --- |
 | `DATABASE_URL` | Conexão de um banco PostgreSQL local ou externo. Na Vercel, prefira a conexão com pooler fornecida pelo Neon ou pelo seu provedor. |
 | `LOJA_ADMIN_USER` | Nome do usuário de acesso à loja. |
-| `LOJA_ADMIN_PASSWORD` | Senha exclusiva com no mínimo 12 caracteres. |
+| `LOJA_ADMIN_PASSWORD` | Senha exclusiva; o mínimo padrão é de 12 caracteres. |
+| `LOJA_ADMIN_MIN_PASSWORD_LENGTH` | Opcional: mínimo de caracteres da senha, de 5 a 256. Se omitido, será usado 12. |
 | `LOJA_SESSION_SECRET` | Segredo aleatório de pelo menos 32 caracteres, usado para assinar as sessões. |
 | `LOJA_OPERATOR_NAME` | Nome do operador que aparece nos registros; se omitido, será usado `Operador`. |
 
@@ -91,7 +92,7 @@ npm start
 O repositório do projeto é [ErickSantos0/Loja](https://github.com/ErickSantos0/Loja). Importe esse repositório na Vercel com o preset **Next.js** e a raiz do repositório como diretório do projeto. `vercel.json` define `npm ci` como instalação e `npm run build` como compilação.
 
 1. Crie ou conecte um banco PostgreSQL persistente, por exemplo Neon, e obtenha sua URL de conexão com pooler.
-2. Configure as cinco variáveis da tabela acima em **Settings → Environment Variables**. Esses valores são usados somente no servidor; não use o prefixo `NEXT_PUBLIC_`.
+2. Configure as variáveis da tabela acima em **Settings → Environment Variables**. Esses valores são usados somente no servidor; não use o prefixo `NEXT_PUBLIC_`.
 3. Publique o projeto e abra o endereço fornecido pela Vercel. Entre com o usuário e a senha definidos para a loja.
 4. Ao alterar as variáveis de ambiente, faça uma nova publicação para que o servidor use os novos valores.
 
